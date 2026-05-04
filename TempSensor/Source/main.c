@@ -14,6 +14,7 @@ int main(int argc, char *argv[])
 {
 	int use_gpiod = (argc > 1 && strcmp(argv[1], "--gpiod") == 0);
 	int use_temp = (argc > 1 && strcmp(argv[1], "--temp") == 0);
+	int use_mqtt = (argc > 1 && strcmp(argv[1], "--mqtt") == 0);
 
 	int interval = 2;
 	if (use_temp && argc > 2)
@@ -22,6 +23,8 @@ int main(int argc, char *argv[])
 		if (val > 0)
 			interval = val;
 	}
+
+	char clientid[64] = "TempSensorClient";
 
 	log_msg("error.log", "Session started.");
 
@@ -57,7 +60,8 @@ int main(int argc, char *argv[])
 		dump_bsc1_status();
 
 		// Initialize MQTT client
-		if (mqtt_init("tcp://localhost:1883", "TempSensorClient") != 0)
+		snprintf(clientid, sizeof(clientid), "TempSensorPublisher-%d", getpid());
+		if (mqtt_init("tcp://localhost:1883", clientid) != 0)
 		{
 			printf("MQTT init failed!\n");
 			return 1;
@@ -73,6 +77,23 @@ int main(int argc, char *argv[])
 			mqtt_publish("sensor/temperature", payload);
 			sleep(interval);
 		}
+	}
+	else if (use_mqtt)
+	{
+		// Initialize MQTT client
+		snprintf(clientid, sizeof(clientid), "TempSensorSubscriber-%d", getpid());
+		if (mqtt_init("tcp://localhost:1883", clientid) != 0)
+		{
+			printf("MQTT init failed!\n");
+			return 1;
+		}
+
+		printf("Subscribing to sensor/temperature...\n");
+		mqtt_subscribe("sensor/temperature");
+
+		// Block forever (or until interrupted)
+		while (1)
+			sleep(1);
 	}
 	else
 	{

@@ -3,6 +3,7 @@
 
 int mqtt_init(const char *address, const char *clientid);
 int mqtt_publish(const char *topic, const char *payload);
+void mqtt_subscribe(const char *topic);
 void mqtt_cleanup();
 
 #endif
