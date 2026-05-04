@@ -5,6 +5,7 @@
 #include "gpio/gpiod.h"
 #include "i2c/tc74.h"
 #include "util/logger.h"
+#include "mqtt/mqtt.h"
 
 int gpio_26_val = -1;
 int gpio_27_val = -1;
@@ -55,11 +56,21 @@ int main(int argc, char *argv[])
 
 		dump_bsc1_status();
 
+		// Initialize MQTT client
+		if (mqtt_init("tcp://localhost:1883", "TempSensorClient") != 0)
+		{
+			printf("MQTT init failed!\n");
+			return 1;
+		}
+
 		uint8_t temp;
+		char payload[32];
 
 		while (1)
 		{
 			TC74_Read(0x48, &temp); // Read temperature from TC74 (address 0x48)
+			snprintf(payload, sizeof(payload), "%d", temp);
+			mqtt_publish("sensor/temperature", payload);
 			sleep(interval);
 		}
 	}
