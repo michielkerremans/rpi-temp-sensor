@@ -12,6 +12,15 @@ int gpio_27_val = -1;
 int main(int argc, char *argv[])
 {
 	int use_gpiod = (argc > 1 && strcmp(argv[1], "--gpiod") == 0);
+	int use_temp = (argc > 1 && strcmp(argv[1], "--temp") == 0);
+
+	int interval = 2;
+	if (use_temp && argc > 2)
+	{
+		int val = atoi(argv[2]);
+		if (val > 0)
+			interval = val;
+	}
 
 	log_msg("error.log", "Session started.");
 
@@ -36,13 +45,10 @@ int main(int argc, char *argv[])
 			sleep(1);
 		}
 	}
-	else
+	else if (use_temp)
 	{
-		GPIO_Init();			// Initialize GPIO memory mapping
-		GPIO_Mode(26, 0); // Set GPIO 26 as input
-		GPIO_Mode(27, 0); // Set GPIO 27 as input
-
-		TC74_Init();
+		GPIO_Init(); // Initialize GPIO memory mapping
+		TC74_Init(); // Initialize TC74 memory mapping
 
 		GPIO_Alt(2, 0); // Set GPIO 2 (SDA) to ALT0 (I2C1 SDA)
 		GPIO_Alt(3, 0); // Set GPIO 3 (SCL) to ALT0 (I2C1 SCL)
@@ -50,7 +56,18 @@ int main(int argc, char *argv[])
 		dump_bsc1_status();
 
 		uint8_t temp;
-		TC74_Read(0x48, &temp); // Read temperature from TC74 (address 0x48)
+
+		while (1)
+		{
+			TC74_Read(0x48, &temp); // Read temperature from TC74 (address 0x48)
+			sleep(interval);
+		}
+	}
+	else
+	{
+		GPIO_Init();			// Initialize GPIO memory mapping
+		GPIO_Mode(26, 0); // Set GPIO 26 as input
+		GPIO_Mode(27, 0); // Set GPIO 27 as input
 
 		while (1)
 		{
