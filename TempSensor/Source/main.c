@@ -1,6 +1,8 @@
 #include "PJ_RPI.h"
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
+#include <unistd.h>
 #include "gpio/gpio.h"
 #include "gpio/gpiod.h"
 #include "i2c/tc74.h"
@@ -10,12 +12,18 @@
 int gpio_26_val = -1;
 int gpio_27_val = -1;
 
+// Function prototypes
+void *toggle_gpio17(void *arg);
+void *toggle_gpio19(void *arg);
+void *mqtt_payload_loop(void *arg);
+
 int main(int argc, char *argv[])
 {
 	int use_gpiod = (argc > 1 && strcmp(argv[1], "--gpiod") == 0);
 	int use_temp = (argc > 1 && strcmp(argv[1], "--temp") == 0);
 	int use_mqtt = (argc > 1 && strcmp(argv[1], "--mqtt") == 0);
 
+	// Interval for temperature publishing
 	int interval = 2;
 	if (use_temp && argc > 2)
 	{
@@ -25,6 +33,22 @@ int main(int argc, char *argv[])
 	}
 
 	char clientid[64] = "TempSensorClient";
+
+	// Intervals for GPIO toggling
+	int gpio17_interval = 2;
+	if (use_mqtt && argc > 2)
+	{
+		int v = atoi(argv[2]);
+		if (v > 0)
+			gpio17_interval = v;
+	}
+	int gpio19_interval = 3;
+	if (use_mqtt && argc > 3)
+	{
+		int v = atoi(argv[3]);
+		if (v > 0)
+			gpio19_interval = v;
+	}
 
 	log_msg("error.log", "Session started.");
 
@@ -91,17 +115,18 @@ int main(int argc, char *argv[])
 		printf("Subscribing to sensor/temperature...\n");
 		mqtt_subscribe("sensor/temperature");
 
-		char prev_payload[32] = {0};
+		GPIO_Init();
+		GPIO_Mode(17, 1); // Set GPIO 17 as output
+		GPIO_Mode(19, 1); // Set GPIO 19 as output
+
+		pthread_t t1, t2, t3;
+		pthread_create(&t1, NULL, toggle_gpio17, &gpio17_interval);
+		pthread_create(&t2, NULL, toggle_gpio19, &gpio19_interval);
+		pthread_create(&t3, NULL, mqtt_payload_loop, NULL);
+
+		// Keep main thread alive
 		while (1)
-		{
-			const char *current = mqtt_get_last_payload();
-			if (current[0] && strcmp(current, prev_payload) != 0)
-			{
-				printf("Temperature changed: %s\n", current);
-				strncpy(prev_payload, current, sizeof(prev_payload));
-			}
-			sleep(1);
-		}
+			sleep(10);
 	}
 	else
 	{
@@ -119,4 +144,48 @@ int main(int argc, char *argv[])
 
 	log_msg("error.log", "Session ended.");
 	return 0;
+}
+
+void *toggle_gpio17(void *arg)
+{
+	int interval = *(int *)arg;
+	int state = 0;
+	while (1)
+	{
+		state = !state;
+		GPIO_Write(17, state);
+		printf("Toggled GPIO 17, now %s\n", state ? "HIGH" : "LOW");
+		sleep(interval);
+	}
+	return NULL;
+}
+
+void *toggle_gpio19(void *arg)
+{
+	int interval = *(int *)arg;
+	int state = 0;
+	while (1)
+	{
+		state = !state;
+		GPIO_Write(19, state);
+		printf("Toggled GPIO 19, now %s\n", state ? "HIGH" : "LOW");
+		sleep(interval);
+	}
+	return NULL;
+}
+
+void *mqtt_payload_loop(void *arg)
+{
+	char prev_payload[32] = {0};
+	while (1)
+	{
+		const char *current = mqtt_get_last_payload();
+		if (current[0] && strcmp(current, prev_payload) != 0)
+		{
+			printf("Temperature changed: %s\n", current);
+			strncpy(prev_payload, current, sizeof(prev_payload));
+		}
+		sleep(1);
+	}
+	return NULL;
 }

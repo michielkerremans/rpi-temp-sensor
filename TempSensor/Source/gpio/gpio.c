@@ -38,3 +38,11 @@ int GPIO_Read(int pin, int *value)
   }
   return 0;
 }
+
+void GPIO_Write(int pin, int value)
+{
+  if (value)
+    *(gpio.addr + 7) = 1 << pin; // Set pin HIGH
+  else
+    *(gpio.addr + 10) = 1 << pin; // Set pin LOW
+}
