@@ -87,7 +87,8 @@ int main(int argc, char *argv[])
 		snprintf(clientid, sizeof(clientid), "TempSensorPublisher-%d", getpid());
 		if (mqtt_init("tcp://localhost:1883", clientid) != 0)
 		{
-			printf("MQTT init failed!\n");
+			printf("MQTT error: %s\n", mqtt_get_error_message());
+			log_msg("error.log", mqtt_get_error_message());
 			return 1;
 		}
 
@@ -98,7 +99,11 @@ int main(int argc, char *argv[])
 		{
 			TC74_Read(0x48, &temp); // Read temperature from TC74 (address 0x48)
 			snprintf(payload, sizeof(payload), "%d", temp);
-			mqtt_publish("sensor/temperature", payload);
+			if (mqtt_publish("sensor/temperature", payload) != 0)
+			{
+				printf("MQTT error: %s\n", mqtt_get_error_message());
+				log_msg("error.log", mqtt_get_error_message());
+			}
 			sleep(interval);
 		}
 	}
@@ -108,7 +113,8 @@ int main(int argc, char *argv[])
 		snprintf(clientid, sizeof(clientid), "TempSensorSubscriber-%d", getpid());
 		if (mqtt_init("tcp://localhost:1883", clientid) != 0)
 		{
-			printf("MQTT init failed!\n");
+			printf("MQTT error: %s\n", mqtt_get_error_message());
+			log_msg("error.log", mqtt_get_error_message());
 			return 1;
 		}
 
