@@ -8,6 +8,7 @@
 #include "i2c/tc74.h"
 #include "util/logger.h"
 #include "mqtt/mqtt.h"
+#include "gtk/gui.h"
 
 int gpio_26_val = -1;
 int gpio_27_val = -1;
@@ -22,6 +23,7 @@ int main(int argc, char *argv[])
 	int use_gpiod = (argc > 1 && strcmp(argv[1], "--gpiod") == 0);
 	int use_temp = (argc > 1 && strcmp(argv[1], "--temp") == 0);
 	int use_mqtt = (argc > 1 && strcmp(argv[1], "--mqtt") == 0);
+	int use_gtk = (argc > 2 && strcmp(argv[2], "--gtk") == 0);
 
 	// Interval for temperature publishing
 	int interval = 2;
@@ -125,14 +127,21 @@ int main(int argc, char *argv[])
 		GPIO_Mode(17, 1); // Set GPIO 17 as output
 		GPIO_Mode(19, 1); // Set GPIO 19 as output
 
-		pthread_t t1, t2, t3;
-		pthread_create(&t1, NULL, toggle_gpio17, &gpio17_interval);
-		pthread_create(&t2, NULL, toggle_gpio19, &gpio19_interval);
-		pthread_create(&t3, NULL, mqtt_payload_loop, NULL);
+		if (use_gtk)
+		{
+			launch_gtk_gui();
+		}
+		else
+		{
+			pthread_t t1, t2, t3;
+			pthread_create(&t1, NULL, toggle_gpio17, &gpio17_interval);
+			pthread_create(&t2, NULL, toggle_gpio19, &gpio19_interval);
+			pthread_create(&t3, NULL, mqtt_payload_loop, NULL);
 
-		// Keep main thread alive
-		while (1)
-			sleep(10);
+			// Keep main thread alive
+			while (1)
+				sleep(10);
+		}
 	}
 	else
 	{
