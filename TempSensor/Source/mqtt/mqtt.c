@@ -8,10 +8,12 @@
 #define TIMEOUT 10000L
 
 static MQTTClient client;
+static char last_payload[32] = {0};
 
 static int messageArrived(void *context, char *topicName, int topicLen, MQTTClient_message *message)
 {
   printf("Received on topic %s: %.*s\n", topicName, message->payloadlen, (char *)message->payload);
+  snprintf(last_payload, sizeof(last_payload), "%.*s", message->payloadlen, (char *)message->payload);
   MQTTClient_freeMessage(&message);
   MQTTClient_free(topicName);
   return 1;
@@ -57,4 +59,9 @@ void mqtt_cleanup()
 {
   MQTTClient_disconnect(client, TIMEOUT);
   MQTTClient_destroy(&client);
+}
+
+const char *mqtt_get_last_payload(void)
+{
+  return last_payload;
 }

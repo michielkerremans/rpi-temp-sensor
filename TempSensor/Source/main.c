@@ -91,9 +91,17 @@ int main(int argc, char *argv[])
 		printf("Subscribing to sensor/temperature...\n");
 		mqtt_subscribe("sensor/temperature");
 
-		// Block forever (or until interrupted)
+		char prev_payload[32] = {0};
 		while (1)
+		{
+			const char *current = mqtt_get_last_payload();
+			if (current[0] && strcmp(current, prev_payload) != 0)
+			{
+				printf("Temperature changed: %s\n", current);
+				strncpy(prev_payload, current, sizeof(prev_payload));
+			}
 			sleep(1);
+		}
 	}
 	else
 	{
