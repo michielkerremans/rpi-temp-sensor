@@ -3,120 +3,184 @@
 #include "../gpio/gpio.h"
 #include "../mqtt/mqtt.h"
 
-// --- Function prototypes ---
-static gboolean toggle_gpio17_cb(gpointer user_data);
-static gboolean toggle_gpio19_cb(gpointer user_data);
-static void on_toggle17(GtkToggleButton *button, gpointer user_data);
-static void on_toggle19(GtkToggleButton *button, gpointer user_data);
-static void on_interval17_changed(GtkSpinButton *spin, gpointer button);
-static void on_interval19_changed(GtkSpinButton *spin, gpointer button);
-static gboolean update_temp_label(gpointer user_data);
-void launch_gtk_gui(void);
+// ====== Data Structures and State ======
 
-// --- Static state ---
-static int gpio17_state = 0, gpio19_state = 0;
-static guint timer17_id = 0, timer19_id = 0;
-static int interval17 = 0, interval19 = 0;
+// Output control structure for GPIO outputs
+typedef struct
+{
+  int pin;
+  int *state;
+  GtkSwitch *sw;
+  guint *timer_id;
+} GpioControl;
+
+// Temperature label widget
 static GtkWidget *temp_label = NULL;
 
-// --- Function definitions ---
-static gboolean toggle_gpio17_cb(gpointer user_data)
+// GPIO input state and LED widgets
+static int gpio26_state = 0, gpio27_state = 0;
+static GtkWidget *gpio26_led = NULL, *gpio27_led = NULL;
+
+// GPIO output state and timer IDs
+static int gpio17_state = 0, gpio19_state = 0;
+static guint timer17_id = 0, timer19_id = 0;
+
+// ====== Callback Functions ======
+
+// Draws an LED for GPIO input state
+static gboolean draw_led(GtkWidget *widget, cairo_t *cr, gpointer user_data)
 {
-  gpio17_state = !gpio17_state;
-  GPIO_Write(17, gpio17_state);
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(user_data), gpio17_state);
-  return TRUE;
+  int state = *(int *)user_data;
+  cairo_arc(cr, 10, 10, 8, 0, 2 * G_PI);
+  cairo_set_source_rgb(cr, state ? 0 : 1, state ? 1 : 0, 0);
+  cairo_fill(cr);
+  return FALSE;
 }
-static gboolean toggle_gpio19_cb(gpointer user_data)
-{
-  gpio19_state = !gpio19_state;
-  GPIO_Write(19, gpio19_state);
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(user_data), gpio19_state);
-  return TRUE;
-}
-static void on_toggle17(GtkToggleButton *button, gpointer user_data)
-{
-  gpio17_state = gtk_toggle_button_get_active(button);
-  GPIO_Write(17, gpio17_state);
-}
-static void on_toggle19(GtkToggleButton *button, gpointer user_data)
-{
-  gpio19_state = gtk_toggle_button_get_active(button);
-  GPIO_Write(19, gpio19_state);
-}
-static void on_interval17_changed(GtkSpinButton *spin, gpointer button)
-{
-  int val = gtk_spin_button_get_value_as_int(spin);
-  if (timer17_id)
-    g_source_remove(timer17_id);
-  interval17 = val;
-  if (interval17 > 0)
-    timer17_id = g_timeout_add_seconds(interval17, toggle_gpio17_cb, button);
-}
-static void on_interval19_changed(GtkSpinButton *spin, gpointer button)
-{
-  int val = gtk_spin_button_get_value_as_int(spin);
-  if (timer19_id)
-    g_source_remove(timer19_id);
-  interval19 = val;
-  if (interval19 > 0)
-    timer19_id = g_timeout_add_seconds(interval19, toggle_gpio19_cb, button);
-}
+
+// Updates the temperature label from MQTT
 static gboolean update_temp_label(gpointer user_data)
 {
   const char *payload = mqtt_get_last_payload();
-  char buf[64];
-  snprintf(buf, sizeof(buf), "Temperature: %s", payload[0] ? payload : "--");
-  gtk_label_set_text(GTK_LABEL(temp_label), buf);
-  return TRUE; // keep timer running
+  char buf[128];
+  if (payload[0])
+    snprintf(buf, sizeof(buf), "Temperature:  <span size=\"x-large\"><b>%s</b></span> <span size=\"x-large\">°C</span>", payload);
+  else
+    snprintf(buf, sizeof(buf), "Temperature:  <span size=\"x-large\"><b>--</b></span> <span size=\"x-large\">°C</span>");
+  gtk_label_set_markup(GTK_LABEL(temp_label), buf);
+  return TRUE;
 }
+
+// Reads GPIO input and redraws LEDs
+static gboolean update_gpio_inputs(gpointer user_data)
+{
+  GPIO_Read(26, &gpio26_state);
+  GPIO_Read(27, &gpio27_state);
+  gtk_widget_queue_draw(gpio26_led);
+  gtk_widget_queue_draw(gpio27_led);
+  return TRUE;
+}
+
+// Sets GPIO output state and updates switch
+static void set_output_state(GpioControl *ctrl, int state)
+{
+  *(ctrl->state) = state;
+  GPIO_Write(ctrl->pin, state);
+  gtk_switch_set_active(ctrl->sw, state);
+}
+
+// Callback for manual output control via GtkSwitch
+static gboolean on_switch(GtkSwitch *sw, gboolean state, gpointer user_data)
+{
+  set_output_state((GpioControl *)user_data, state);
+  return FALSE;
+}
+
+// Callback for periodic output toggling (timer)
+static gboolean toggle_gpio_cb(gpointer user_data)
+{
+  set_output_state((GpioControl *)user_data, !*(((GpioControl *)user_data)->state));
+  return TRUE;
+}
+
+// Callback for timer interval changes via GtkSpinButton
+static void on_interval_changed(GtkSpinButton *spin, gpointer user_data)
+{
+  GpioControl *ctrl = (GpioControl *)user_data;
+  int val = gtk_spin_button_get_value_as_int(spin);
+  if (*(ctrl->timer_id))
+    g_source_remove(*(ctrl->timer_id));
+  if (val > 0)
+    *(ctrl->timer_id) = g_timeout_add_seconds(val, toggle_gpio_cb, ctrl);
+}
+
+// ====== GUI Construction and Main Entry ======
 
 void launch_gtk_gui(void)
 {
+  // --- Initialization ---
   int argc = 0;
   char **argv = NULL;
   gtk_init(&argc, &argv);
   GPIO_Init();
   GPIO_Mode(17, 1);
   GPIO_Mode(19, 1);
+  GPIO_Mode(26, 0);
+  GPIO_Mode(27, 0);
 
+  // --- Window and Layout ---
   GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_window_set_title(GTK_WINDOW(window), "GPIO Toggle GUI");
   gtk_container_set_border_width(GTK_CONTAINER(window), 10);
-
   GtkWidget *grid = gtk_grid_new();
   gtk_grid_set_row_spacing(GTK_GRID(grid), 5);
   gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
-
-  // GPIO 17
-  GtkWidget *toggle17 = gtk_toggle_button_new_with_label("GPIO 17");
-  GtkWidget *spin17 = gtk_spin_button_new_with_range(0, 60, 1);
-  gtk_grid_attach(GTK_GRID(grid), toggle17, 0, 0, 1, 1);
-  gtk_grid_attach(GTK_GRID(grid), spin17, 1, 0, 1, 1);
-
-  // GPIO 19
-  GtkWidget *toggle19 = gtk_toggle_button_new_with_label("GPIO 19");
-  GtkWidget *spin19 = gtk_spin_button_new_with_range(0, 60, 1);
-  gtk_grid_attach(GTK_GRID(grid), toggle19, 0, 1, 1, 1);
-  gtk_grid_attach(GTK_GRID(grid), spin19, 1, 1, 1, 1);
-
-  // Temperature label
-  temp_label = gtk_label_new("Temperature: --");
-  gtk_grid_attach(GTK_GRID(grid), temp_label, 0, 2, 2, 1);
-
   gtk_container_add(GTK_CONTAINER(window), grid);
 
-  // Connect signals
-  g_signal_connect(toggle17, "toggled", G_CALLBACK(on_toggle17), NULL);
-  g_signal_connect(toggle19, "toggled", G_CALLBACK(on_toggle19), NULL);
-  g_signal_connect(spin17, "value-changed", G_CALLBACK(on_interval17_changed), toggle17);
-  g_signal_connect(spin19, "value-changed", G_CALLBACK(on_interval19_changed), toggle19);
+  // --- Top: Temperature ---
+  temp_label = gtk_label_new("Temperature:  <span size=\"x-large\"><b>--</b></span> <span size=\"x-large\">°C</span>");
+  gtk_label_set_xalign(GTK_LABEL(temp_label), 0.0);
+  gtk_label_set_use_markup(GTK_LABEL(temp_label), TRUE);
+  gtk_grid_attach(GTK_GRID(grid), temp_label, 0, 0, 6, 1);
+  // Add a separator with padding below temperature
+  GtkWidget *temp_sep_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  GtkWidget *temp_sep = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+  gtk_box_pack_start(GTK_BOX(temp_sep_box), temp_sep, TRUE, TRUE, 2); // 2px padding
+  gtk_grid_attach(GTK_GRID(grid), temp_sep_box, 0, 1, 6, 1);
+
+  // --- Row 1: GPIO 27 (IN) ---
+  GtkWidget *label27 = gtk_label_new("GPIO 27 (IN)");
+  gpio27_led = gtk_drawing_area_new();
+  gtk_widget_set_size_request(gpio27_led, 20, 20);
+  gtk_widget_set_valign(gpio27_led, GTK_ALIGN_CENTER);
+  gtk_grid_attach(GTK_GRID(grid), label27, 0, 2, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), gpio27_led, 1, 2, 1, 1);
+  g_signal_connect(gpio27_led, "draw", G_CALLBACK(draw_led), &gpio27_state);
+
+  // --- Row 1: GPIO 17 (OUT) ---
+  GtkWidget *label17 = gtk_label_new("GPIO 17 (OUT)");
+  GtkWidget *switch17 = gtk_switch_new();
+  GtkWidget *spin17 = gtk_spin_button_new_with_range(0, 60, 1);
+  GtkWidget *label17s = gtk_label_new("seconds");
+  gtk_grid_attach(GTK_GRID(grid), label17, 3, 2, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), switch17, 4, 2, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), spin17, 5, 2, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), label17s, 6, 2, 1, 1);
+
+  // --- Row 2: GPIO 26 (IN) ---
+  GtkWidget *label26 = gtk_label_new("GPIO 26 (IN)");
+  gpio26_led = gtk_drawing_area_new();
+  gtk_widget_set_size_request(gpio26_led, 20, 20);
+  gtk_widget_set_valign(gpio26_led, GTK_ALIGN_CENTER);
+  gtk_grid_attach(GTK_GRID(grid), label26, 0, 3, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), gpio26_led, 1, 3, 1, 1);
+  g_signal_connect(gpio26_led, "draw", G_CALLBACK(draw_led), &gpio26_state);
+
+  // --- Row 2: GPIO 19 (OUT) ---
+  GtkWidget *label19 = gtk_label_new("GPIO 19 (OUT)");
+  GtkWidget *switch19 = gtk_switch_new();
+  GtkWidget *spin19 = gtk_spin_button_new_with_range(0, 60, 1);
+  GtkWidget *label19s = gtk_label_new("seconds");
+  gtk_grid_attach(GTK_GRID(grid), label19, 3, 3, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), switch19, 4, 3, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), spin19, 5, 3, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), label19s, 6, 3, 1, 1);
+
+  // --- Output Control Structs ---
+  static GpioControl ctrl17 = {17, &gpio17_state, NULL, &timer17_id};
+  static GpioControl ctrl19 = {19, &gpio19_state, NULL, &timer19_id};
+  ctrl17.sw = GTK_SWITCH(switch17);
+  ctrl19.sw = GTK_SWITCH(switch19);
+
+  // --- Signal Connections ---
+  g_signal_connect(switch17, "state-set", G_CALLBACK(on_switch), &ctrl17);
+  g_signal_connect(switch19, "state-set", G_CALLBACK(on_switch), &ctrl19);
+  g_signal_connect(spin17, "value-changed", G_CALLBACK(on_interval_changed), &ctrl17);
+  g_signal_connect(spin19, "value-changed", G_CALLBACK(on_interval_changed), &ctrl19);
   g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
+  // --- Show and Start ---
   gtk_widget_show_all(window);
-
-  // Start timer to update temperature label every second
   g_timeout_add_seconds(1, update_temp_label, NULL);
-
+  g_timeout_add_seconds(1, update_gpio_inputs, NULL);
   gtk_main();
 }
