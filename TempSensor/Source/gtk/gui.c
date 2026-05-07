@@ -66,6 +66,7 @@ static void set_output_state(GpioControl *ctrl, int state)
   *(ctrl->state) = state;
   GPIO_Write(ctrl->pin, state);
   gtk_switch_set_active(ctrl->sw, state);
+  update_gpio_inputs(NULL); // Immediately read the inputs again (and update LEDs)
 }
 
 // Callback for manual output control via GtkSwitch
@@ -107,6 +108,15 @@ void launch_gtk_gui(void)
   GPIO_Mode(26, 0);
   GPIO_Mode(27, 0);
 
+  // Read initial GPIO input states
+  GPIO_Read(26, &gpio26_state);
+  GPIO_Read(27, &gpio27_state);
+  gpio19_state = gpio26_state;
+  gpio17_state = gpio27_state;
+  // Write initial output states to match inputs
+  GPIO_Write(17, gpio17_state);
+  GPIO_Write(19, gpio19_state);
+
   // --- Window and Layout ---
   GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_window_set_title(GTK_WINDOW(window), "GPIO Toggle GUI");
@@ -145,6 +155,7 @@ void launch_gtk_gui(void)
   gtk_grid_attach(GTK_GRID(grid), switch17, 4, 2, 1, 1);
   gtk_grid_attach(GTK_GRID(grid), spin17, 5, 2, 1, 1);
   gtk_grid_attach(GTK_GRID(grid), label17s, 6, 2, 1, 1);
+  gtk_switch_set_active(GTK_SWITCH(switch17), gpio17_state); // Sync initial switch state with GPIO state
 
   // --- Row 2: GPIO 26 (IN) ---
   GtkWidget *label26 = gtk_label_new("GPIO 26 (IN)");
@@ -164,6 +175,7 @@ void launch_gtk_gui(void)
   gtk_grid_attach(GTK_GRID(grid), switch19, 4, 3, 1, 1);
   gtk_grid_attach(GTK_GRID(grid), spin19, 5, 3, 1, 1);
   gtk_grid_attach(GTK_GRID(grid), label19s, 6, 3, 1, 1);
+  gtk_switch_set_active(GTK_SWITCH(switch19), gpio19_state); // Sync initial switch state with GPIO state
 
   // --- Output Control Structs ---
   static GpioControl ctrl17 = {17, &gpio17_state, NULL, &timer17_id};
