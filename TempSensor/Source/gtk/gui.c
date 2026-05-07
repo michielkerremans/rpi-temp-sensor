@@ -37,6 +37,8 @@ static gboolean draw_led(GtkWidget *widget, cairo_t *cr, gpointer user_data)
   return FALSE;
 }
 
+// [GTK] Cairo is a 2D graphics library used by GTK for custom drawing (e.g., shapes, colors) on widgets.
+
 // Updates the temperature label from MQTT
 static gboolean update_temp_label(gpointer user_data)
 {
@@ -46,17 +48,24 @@ static gboolean update_temp_label(gpointer user_data)
     snprintf(buf, sizeof(buf), "Temperature:  <span size=\"x-large\"><b>%s</b></span> <span size=\"x-large\">°C</span>", payload);
   else
     snprintf(buf, sizeof(buf), "Temperature:  <span size=\"x-large\"><b>--</b></span> <span size=\"x-large\">°C</span>");
-  gtk_label_set_markup(GTK_LABEL(temp_label), buf);
+  gtk_label_set_markup(GTK_LABEL(temp_label), buf); // Sets styled label text (markup in buf)
   return TRUE;
 }
+
+/* [GTK] GTK code is typically written using generic GtkWidget * pointers and type macros
+ * (like GTK_LABEL(), GTK_SWITCH()) because C doesn’t support real inheritance or templates.
+ * All widgets must be handled as GtkWidget * when adding them to containers or connecting signals.
+ * The macros (e.g., GTK_LABEL()) cast the generic pointer to the specific widget type (e.g., GtkLabel)
+ * so you can safely call widget-specific functions.
+ */
 
 // Reads GPIO input and redraws LEDs
 static gboolean update_gpio_inputs(gpointer user_data)
 {
   GPIO_Read(26, &gpio26_state);
   GPIO_Read(27, &gpio27_state);
-  gtk_widget_queue_draw(gpio26_led);
-  gtk_widget_queue_draw(gpio27_led);
+  gtk_widget_queue_draw(gpio26_led); // Schedules redraw of the LED widget to reflect new state
+  gtk_widget_queue_draw(gpio27_led); // [GTK] draw requests are queued and processed by GTK's main loop
   return TRUE;
 }
 
@@ -89,7 +98,7 @@ static void on_interval_changed(GtkSpinButton *spin, gpointer user_data)
   GpioControl *ctrl = (GpioControl *)user_data;
   int val = gtk_spin_button_get_value_as_int(spin);
   if (*(ctrl->timer_id))
-    g_source_remove(*(ctrl->timer_id));
+    g_source_remove(*(ctrl->timer_id)); // [GTK] Removes the active timer callback from the main loop
   if (val > 0)
     *(ctrl->timer_id) = g_timeout_add_seconds(val, toggle_gpio_cb, ctrl);
 }
@@ -137,6 +146,8 @@ void launch_gtk_gui(void)
   gtk_box_pack_start(GTK_BOX(temp_sep_box), temp_sep, TRUE, TRUE, 2); // 2px padding
   gtk_grid_attach(GTK_GRID(grid), temp_sep_box, 0, 1, 6, 1);
 
+  // [GTK] gtk_box_pack_start() adds a widget to the start of a GtkBox (“packing” means inserting in order)
+
   // --- Row 1: GPIO 27 (IN) ---
   GtkWidget *label27 = gtk_label_new("GPIO 27 (IN)");
   gpio27_led = gtk_drawing_area_new();
@@ -145,6 +156,8 @@ void launch_gtk_gui(void)
   gtk_grid_attach(GTK_GRID(grid), label27, 0, 2, 1, 1);
   gtk_grid_attach(GTK_GRID(grid), gpio27_led, 1, 2, 1, 1);
   g_signal_connect(gpio27_led, "draw", G_CALLBACK(draw_led), &gpio27_state);
+
+  // [GTK] g_signal_connect() links a widget’s signal (like "draw" or "state-set", as defined by GTK) to a callback function
 
   // --- Row 1: GPIO 17 (OUT) ---
   GtkWidget *label17 = gtk_label_new("GPIO 17 (OUT)");
@@ -191,8 +204,8 @@ void launch_gtk_gui(void)
   g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
   // --- Show and Start ---
-  gtk_widget_show_all(window);
-  g_timeout_add_seconds(1, update_temp_label, NULL);
-  g_timeout_add_seconds(1, update_gpio_inputs, NULL);
+  gtk_widget_show_all(window);                        // [GTK] Shows the window and all child widgets
+  g_timeout_add_seconds(1, update_temp_label, NULL);  // [GTK] Calls update_temp_label every second
+  g_timeout_add_seconds(1, update_gpio_inputs, NULL); // [GTK] Calls update_gpio_inputs every second
   gtk_main();
 }
