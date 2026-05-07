@@ -25,6 +25,10 @@ static GtkWidget *gpio26_led = NULL, *gpio27_led = NULL;
 static int gpio17_state = 0, gpio19_state = 0;
 static guint timer17_id = 0, timer19_id = 0;
 
+// Output control structs for GPIO 17 and 19
+static GpioControl ctrl17 = {17, &gpio17_state, NULL, &timer17_id};
+static GpioControl ctrl19 = {19, &gpio19_state, NULL, &timer19_id};
+
 // ====== Callback Functions ======
 
 // Draws an LED for GPIO input state
@@ -101,6 +105,21 @@ static void on_interval_changed(GtkSpinButton *spin, gpointer user_data)
     g_source_remove(*(ctrl->timer_id)); // [GTK] Removes the active timer callback from the main loop
   if (val > 0)
     *(ctrl->timer_id) = g_timeout_add_seconds(val, toggle_gpio_cb, ctrl);
+}
+
+// Callback for the output toggle button
+static void on_output_toggle(GtkButton *btn, gpointer user_data)
+{
+  GtkComboBox *combo = GTK_COMBO_BOX(user_data);
+  int idx = gtk_combo_box_get_active(combo);
+  if (idx == 0)
+  {
+    set_output_state(&ctrl17, !(*ctrl17.state));
+  }
+  else if (idx == 1)
+  {
+    set_output_state(&ctrl19, !(*ctrl19.state));
+  }
 }
 
 // ====== GUI Construction and Main Entry ======
@@ -190,9 +209,7 @@ void launch_gtk_gui(void)
   gtk_grid_attach(GTK_GRID(grid), label19s, 6, 3, 1, 1);
   gtk_switch_set_active(GTK_SWITCH(switch19), gpio19_state); // Sync initial switch state with GPIO state
 
-  // --- Output Control Structs ---
-  static GpioControl ctrl17 = {17, &gpio17_state, NULL, &timer17_id};
-  static GpioControl ctrl19 = {19, &gpio19_state, NULL, &timer19_id};
+  // Link switches to control structs
   ctrl17.sw = GTK_SWITCH(switch17);
   ctrl19.sw = GTK_SWITCH(switch19);
 
@@ -202,6 +219,29 @@ void launch_gtk_gui(void)
   g_signal_connect(spin17, "value-changed", G_CALLBACK(on_interval_changed), &ctrl17);
   g_signal_connect(spin19, "value-changed", G_CALLBACK(on_interval_changed), &ctrl19);
   g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+
+  // --- Divider and Output Toggle Section ---
+  // Add a horizontal separator below everything
+  GtkWidget *bottom_sep_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  GtkWidget *bottom_sep = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+  gtk_box_pack_start(GTK_BOX(bottom_sep_box), bottom_sep, TRUE, TRUE, 2);
+  gtk_grid_attach(GTK_GRID(grid), bottom_sep_box, 0, 4, 7, 1);
+
+  // Dropdown (combo box) for selecting output GPIO
+  GtkWidget *output_combo = gtk_combo_box_text_new();
+  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(output_combo), "GPIO 17 (OUT)");
+  gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(output_combo), "GPIO 19 (OUT)");
+  gtk_combo_box_set_active(GTK_COMBO_BOX(output_combo), 0);
+
+  // Toggle button
+  GtkWidget *toggle_btn = gtk_button_new_with_label("Toggle");
+
+  // Attach combo and button to grid (row 5, columns 0-2)
+  gtk_grid_attach(GTK_GRID(grid), output_combo, 0, 5, 2, 1);
+  gtk_grid_attach(GTK_GRID(grid), toggle_btn, 2, 5, 1, 1);
+
+  // Connect toggle button signal
+  g_signal_connect(toggle_btn, "clicked", G_CALLBACK(on_output_toggle), output_combo);
 
   // --- Show and Start ---
   gtk_widget_show_all(window);                        // [GTK] Shows the window and all child widgets
