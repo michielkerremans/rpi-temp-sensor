@@ -46,3 +46,8 @@ void GPIO_Write(int pin, int value)
   else
     *(gpio.addr + 10) = 1 << pin; // Set pin LOW
 }
+
+void GPIO_Cleanup()
+{
+  unmap_peripheral(&gpio);
+}

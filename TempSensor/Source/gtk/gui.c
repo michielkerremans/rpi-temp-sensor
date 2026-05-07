@@ -122,6 +122,14 @@ static void on_output_toggle(GtkButton *btn, gpointer user_data)
   }
 }
 
+// Cleanup handler for window close
+static void on_window_destroy(GtkWidget *widget, gpointer user_data)
+{
+  mqtt_cleanup();
+  GPIO_Cleanup();
+  gtk_main_quit();
+}
+
 // ====== GUI Construction and Main Entry ======
 
 void launch_gtk_gui(void)
@@ -218,7 +226,8 @@ void launch_gtk_gui(void)
   g_signal_connect(switch19, "state-set", G_CALLBACK(on_switch), &ctrl19);
   g_signal_connect(spin17, "value-changed", G_CALLBACK(on_interval_changed), &ctrl17);
   g_signal_connect(spin19, "value-changed", G_CALLBACK(on_interval_changed), &ctrl19);
-  g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+  // g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+  g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), NULL);
 
   // --- Divider and Output Toggle Section ---
   // Add a horizontal separator below everything
