@@ -167,14 +167,14 @@ mosquitto_sub -t sensor/temperature
 
 Install and manage the systemd service:
 ```bash
-sudo cp TempSensor/Source/config/logger.service /etc/systemd/system/
+sudo cp TempSensor/Source/config/temp-sensor.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable logger.service
-sudo systemctl start logger.service
+sudo systemctl enable temp-sensor.service
+sudo systemctl start temp-sensor.service
 ```
 To restart the service:
 ```bash
-sudo systemctl restart logger.service
+sudo systemctl restart temp-sensor.service
 ```
 The service file runs:
 `/home/pi/embedded/rpi-temp-sensor/TempSensor/Source/build/TempSensor --temp 3`
